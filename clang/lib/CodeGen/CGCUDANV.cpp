@@ -839,7 +839,7 @@ llvm::Function *CGNVCUDARuntime::makeModuleCtorFunction() {
         Linkage,
         /*Initializer=*/llvm::ConstantPointerNull::get(VoidPtrPtrTy),
         "__hip_gpubin_handle");
-    if (Linkage == llvm::GlobalValue::LinkOnceAnyLinkage)
+    if (CGM.supportsCOMDAT() && (Linkage == llvm::GlobalValue::LinkOnceAnyLinkage))
       GpuBinaryHandle->setComdat(
           CGM.getModule().getOrInsertComdat(GpuBinaryHandle->getName()));
     GpuBinaryHandle->setAlignment(CGM.getPointerAlign().getAsAlign());
