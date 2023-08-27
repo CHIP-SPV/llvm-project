@@ -748,8 +748,12 @@ llvm::Function *CGNVCUDARuntime::makeModuleCtorFunction() {
   llvm::Constant *FatBinStr;
   unsigned FatMagic;
   if (IsHIP) {
-    FatbinConstantName = ".hip_fatbin";
-    FatbinSectionName = ".hipFatBinSegment";
+    FatbinConstantName = CGM.getTriple().isMacOSX()
+                               ? "__HIP,__hip_fatbin"
+                               : ".hip_fatbin";
+    FatbinSectionName = CGM.getTriple().isMacOSX()
+                               ? "__HIP,__fatbin"
+                               : ".hipFatBinSegment";
 
     ModuleIDSectionName = "__hip_module_id";
     ModuleIDPrefix = "__hip_";

@@ -299,7 +299,7 @@ GlobalVariable *createFatbinDesc(Module &M, ArrayRef<char> Image, bool IsHIP) {
 
   // Create the global string containing the fatbinary.
   StringRef FatbinConstantSection =
-      IsHIP ? ".hip_fatbin"
+      IsHIP ? (Triple.isMacOSX() ? "__HIP,__hip_fatbin" : ".hip_fatbin")
             : (Triple.isMacOSX() ? "__NV_CUDA,__nv_fatbin" : ".nv_fatbin");
   auto *Data = ConstantDataArray::get(C, Image);
   auto *Fatbin = new GlobalVariable(M, Data->getType(), /*isConstant*/ true,
@@ -308,7 +308,9 @@ GlobalVariable *createFatbinDesc(Module &M, ArrayRef<char> Image, bool IsHIP) {
   Fatbin->setSection(FatbinConstantSection);
 
   // Create the fatbinary wrapper
-  StringRef FatbinWrapperSection = IsHIP               ? ".hipFatBinSegment"
+  StringRef FatbinWrapperSection = IsHIP
+                                   ? Triple.isMacOSX() ? "__HIP,__fatbin"
+                                                       : ".hipFatBinSegment"
                                    : Triple.isMacOSX() ? "__NV_CUDA,__fatbin"
                                                        : ".nvFatBinSegment";
   Constant *FatbinWrapper[] = {
