@@ -96,13 +96,33 @@ void HIPSPV::Linker::constructLinkAndEmitSpirvCommand(
   }
 
   // Emit SPIR-V binary.
-  // We need 1.2 when using warp-level primitivies via sub group extensions.
-  // Strictly put we'd need 1.3 for the standard non-extension shuffle
-  // operations, but it's not supported by any target yet.
-  llvm::opt::ArgStringList TrArgs{"--spirv-max-version=1.2",
-                                  "--spirv-ext=+all"};
-  InputInfo TrInput = InputInfo(types::TY_LLVM_BC, TempFile, "");
-  SPIRV::constructTranslateCommand(C, *this, JA, Output, TrInput, TrArgs);
+  bool UseIntegratedObjEmitter = Args.hasFlag(
+      options::OPT_fintegrated_objemitter,
+      options::OPT_fno_integrated_objemitter, IntegratedObjEmitterIsDefault);
+  if (UseIntegratedObjEmitter) {
+    const char *Llc =
+        Args.MakeArgString(getToolChain().GetProgramPath("llc"));
+    // TODO: pass -O option to llc?
+    //
+    // FIXME: '--mattr=+spirv1.2' is for quickly testing the
+    //        backend. HIPSPV/chipStar should switch to use triple subarch for
+    //        explicitly requesting SPIR-V version for the code generation.
+    //
+    // -O0 avoids issues in pre-ISel passes.
+    llvm::opt::ArgStringList LlcArgs{
+        "-filetype=obj", "-O0", "--mattr=+spirv1.2",
+        TempFile,        "-o",  Output.getFilename()};
+    C.addCommand(std::make_unique<Command>(
+        JA, *this, ResponseFileSupport::None(), Llc, LlcArgs, Inputs, Output));
+  } else {
+    // We need 1.2 when using warp-level primitivies via sub group extensions.
+    // Strictly put we'd need 1.3 for the standard non-extension shuffle
+    // operations, but it's not supported by any target yet.
+    llvm::opt::ArgStringList TrArgs{"--spirv-max-version=1.2",
+                                    "--spirv-ext=+all"};
+    InputInfo TrInput = InputInfo(types::TY_LLVM_BC, TempFile, "");
+    SPIRV::constructTranslateCommand(C, *this, JA, Output, TrInput, TrArgs);
+  }
 }
 
 void HIPSPV::Linker::ConstructJob(Compilation &C, const JobAction &JA,
@@ -161,7 +181,7 @@ void HIPSPVToolChain::addClangTargetOptions(
 
 Tool *HIPSPVToolChain::buildLinker() const {
   assert(getTriple().getArch() == llvm::Triple::spirv64);
-  return new tools::HIPSPV::Linker(*this);
+  return new tools::HIPSPV::Linker(*this, IntegratedBackendIsDefault);
 }
 
 void HIPSPVToolChain::addClangWarningOptions(ArgStringList &CC1Args) const {

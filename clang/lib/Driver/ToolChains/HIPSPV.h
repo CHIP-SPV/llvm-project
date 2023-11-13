@@ -21,8 +21,12 @@ namespace HIPSPV {
 // Runs llvm-link/opt/llc/lld, which links multiple LLVM bitcode, together with
 // device library, then compiles it to SPIR-V in a shared object.
 class LLVM_LIBRARY_VISIBILITY Linker final : public Tool {
+  bool IntegratedObjEmitterIsDefault = false;
+
 public:
-  Linker(const ToolChain &TC) : Tool("HIPSPV::Linker", "hipspv-link", TC) {}
+  Linker(const ToolChain &TC, bool UseIntegratedObjEmitter = false)
+      : Tool("HIPSPV::Linker", "hipspv-link", TC),
+        IntegratedObjEmitterIsDefault(UseIntegratedObjEmitter) {}
 
   bool hasIntegratedCPP() const override { return false; }
 
@@ -44,6 +48,10 @@ private:
 namespace toolchains {
 
 class LLVM_LIBRARY_VISIBILITY HIPSPVToolChain final : public ToolChain {
+  // Using translator vs. backend as default is TBD. Now set to true for
+  // experimenting the backend without needing to modify chipStar.
+  static constexpr bool IntegratedBackendIsDefault = true;
+
 public:
   HIPSPVToolChain(const Driver &D, const llvm::Triple &Triple,
                   const ToolChain &HostTC, const llvm::opt::ArgList &Args);
@@ -88,6 +96,11 @@ public:
   }
   bool isPICDefaultForced() const override { return false; }
   bool SupportsProfiling() const override { return false; }
+
+  bool IsIntegratedBackendDefault() const override {
+    return IntegratedBackendIsDefault;
+  }
+  bool IsNonIntegratedBackendSupported() const override { return true; }
 
   const ToolChain &HostTC;
 
