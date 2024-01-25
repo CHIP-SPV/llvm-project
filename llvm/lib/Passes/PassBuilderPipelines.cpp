@@ -111,6 +111,7 @@
 #include "llvm/Transforms/Scalar/MergedLoadStoreMotion.h"
 #include "llvm/Transforms/Scalar/NewGVN.h"
 #include "llvm/Transforms/Scalar/Reassociate.h"
+#include "llvm/Transforms/Scalar/Scalarizer.h"
 #include "llvm/Transforms/Scalar/SCCP.h"
 #include "llvm/Transforms/Scalar/SROA.h"
 #include "llvm/Transforms/Scalar/SimpleLoopUnswitch.h"
@@ -380,6 +381,10 @@ PassBuilder::buildO1FunctionSimplificationPipeline(OptimizationLevel Level,
   if (AreStatisticsEnabled())
     FPM.addPass(CountVisitsPass());
 
+  if (SPIRVOptimizationMode) {
+    FPM.addPass(ScalarizerPass());
+  }
+
   // Form SSA out of local memory accesses after breaking apart aggregates into
   // scalars.
   FPM.addPass(SROAPass(SROAOptions::ModifyCFG));
@@ -527,6 +532,10 @@ PassBuilder::buildFunctionSimplificationPipeline(OptimizationLevel Level,
 
   if (AreStatisticsEnabled())
     FPM.addPass(CountVisitsPass());
+
+  if (SPIRVOptimizationMode) {
+    FPM.addPass(ScalarizerPass());
+  }
 
   // Form SSA out of local memory accesses after breaking apart aggregates into
   // scalars.
@@ -1342,6 +1351,9 @@ PassBuilder::buildModuleOptimizationPipeline(OptimizationLevel Level,
   FunctionPassManager OptimizePM;
   OptimizePM.addPass(Float2IntPass());
   OptimizePM.addPass(LowerConstantIntrinsicsPass());
+  if (SPIRVOptimizationMode) {
+    OptimizePM.addPass(ScalarizerPass());
+  }
 
   if (EnableMatrix) {
     OptimizePM.addPass(LowerMatrixIntrinsicsPass());
