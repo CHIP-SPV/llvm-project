@@ -153,7 +153,9 @@ void HIPSPVToolChain::addClangTargetOptions(
        // A crude workaround for llvm-spirv which does not handle the
        // autovectorized code well (vector reductions, non-i{8,16,32,64} types).
        // TODO: Allow autovectorization when SPIR-V backend arrives.
-       "-mllvm", "-vectorize-loops=false", "-mllvm", "-vectorize-slp=false"});
+       "-mllvm", "-vectorize-loops=false", "-mllvm", "-vectorize-slp=false",
+       "-mllvm", "-spirv-opt"
+       });
 
   if (DriverArgs.hasFlag(options::OPT_fcuda_approx_transcendentals,
                          options::OPT_fno_cuda_approx_transcendentals, false))

@@ -234,6 +234,10 @@ static cl::opt<bool>
     EnableGVNSink("enable-gvn-sink",
                   cl::desc("Enable the GVN sinking pass (default = off)"));
 
+static cl::opt<bool>
+    SPIRVOptimizationMode("spirv-opt", cl::init(false), cl::Hidden,
+                         cl::desc("Enable SPIR-V optimization mode."));
+
 // This option is used in simplifying testing SampleFDO optimizations for
 // profile loading.
 static cl::opt<bool>
@@ -398,6 +402,7 @@ PassBuilder::buildO1FunctionSimplificationPipeline(OptimizationLevel Level,
   // Form canonically associated expression trees, and simplify the trees using
   // basic mathematical properties. For example, this will form (nearly)
   // minimal multiplication trees.
+  if (!SPIRVOptimizationMode) {
   FPM.addPass(ReassociatePass());
 
   // Add the primary loop simplification pipeline.
@@ -469,6 +474,7 @@ PassBuilder::buildO1FunctionSimplificationPipeline(OptimizationLevel Level,
   FPM.addPass(createFunctionToLoopPassAdaptor(std::move(LPM2),
                                               /*UseMemorySSA=*/false,
                                               /*UseBlockFrequencyInfo=*/false));
+  } // SPIRVOptimizationMode
 
   // Delete small array after loop unroll.
   FPM.addPass(SROAPass(SROAOptions::ModifyCFG));
@@ -575,6 +581,9 @@ PassBuilder::buildFunctionSimplificationPipeline(OptimizationLevel Level,
   // Form canonically associated expression trees, and simplify the trees using
   // basic mathematical properties. For example, this will form (nearly)
   // minimal multiplication trees.
+  if (!SPIRVOptimizationMode) {
+  // FIXME: re-association increases variables liveness and therefore register
+  // pressure.
   FPM.addPass(ReassociatePass());
 
   // Add the primary loop simplification pipeline.
@@ -649,6 +658,7 @@ PassBuilder::buildFunctionSimplificationPipeline(OptimizationLevel Level,
   FPM.addPass(createFunctionToLoopPassAdaptor(std::move(LPM2),
                                               /*UseMemorySSA=*/false,
                                               /*UseBlockFrequencyInfo=*/false));
+  } // SPIRVOptimizationMode
 
   // Delete small array after loop unroll.
   FPM.addPass(SROAPass(SROAOptions::ModifyCFG));
@@ -707,7 +717,10 @@ PassBuilder::buildFunctionSimplificationPipeline(OptimizationLevel Level,
 
   invokeScalarOptimizerLateEPCallbacks(FPM, Level);
 
-  FPM.addPass(SimplifyCFGPass(SimplifyCFGOptions()
+  if (SPIRVOptimizationMode)
+    FPM.addPass(SimplifyCFGPass());
+  else
+    FPM.addPass(SimplifyCFGPass(SimplifyCFGOptions()
                                   .convertSwitchRangeToICmp(true)
                                   .hoistCommonInsts(true)
                                   .sinkCommonInsts(true)));
@@ -1349,6 +1362,7 @@ PassBuilder::buildModuleOptimizationPipeline(OptimizationLevel Level,
 
   invokeVectorizerStartEPCallbacks(OptimizePM, Level);
 
+  if (!SPIRVOptimizationMode) {
   LoopPassManager LPM;
   // First rotate loops that may have been un-rotated by prior passes.
   // Disable header duplication at -Oz.
@@ -1372,6 +1386,8 @@ PassBuilder::buildModuleOptimizationPipeline(OptimizationLevel Level,
   OptimizePM.addPass(InjectTLIMappings());
 
   addVectorPasses(Level, OptimizePM, /* IsFullLTO */ false);
+
+  } // SPIRVOptimizationMode
 
   // LoopSink pass sinks instructions hoisted by LICM, which serves as a
   // canonicalization pass that enables other optimizations. As a result,
