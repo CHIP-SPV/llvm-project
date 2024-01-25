@@ -154,7 +154,9 @@ void HIPSPVToolChain::addClangTargetOptions(
        // autovectorized code well (vector reductions, non-i{8,16,32,64} types).
        // TODO: Allow autovectorization when SPIR-V backend arrives.
        "-mllvm", "-vectorize-loops=false", "-mllvm", "-vectorize-slp=false",
-       "-mllvm", "-spirv-opt"
+       "-mllvm", "-spirv-opt",
+       "-mllvm", "--disable-vector-combine",
+       "-mllvm", "--scalarize-load-store"
        });
 
   if (DriverArgs.hasFlag(options::OPT_fcuda_approx_transcendentals,
