@@ -748,8 +748,12 @@ llvm::Function *CGNVCUDARuntime::makeModuleCtorFunction() {
   llvm::Constant *FatBinStr;
   unsigned FatMagic;
   if (IsHIP) {
-    FatbinConstantName = ".hip_fatbin";
-    FatbinSectionName = ".hipFatBinSegment";
+    FatbinConstantName = CGM.getTriple().isMacOSX()
+                               ? "__HIP,__hip_fatbin"
+                               : ".hip_fatbin";
+    FatbinSectionName = CGM.getTriple().isMacOSX()
+                               ? "__HIP,__fatbin"
+                               : ".hipFatBinSegment";
 
     ModuleIDSectionName = "__hip_module_id";
     ModuleIDPrefix = "__hip_";
@@ -835,7 +839,7 @@ llvm::Function *CGNVCUDARuntime::makeModuleCtorFunction() {
         Linkage,
         /*Initializer=*/llvm::ConstantPointerNull::get(VoidPtrPtrTy),
         "__hip_gpubin_handle");
-    if (Linkage == llvm::GlobalValue::LinkOnceAnyLinkage)
+    if (CGM.supportsCOMDAT() && (Linkage == llvm::GlobalValue::LinkOnceAnyLinkage))
       GpuBinaryHandle->setComdat(
           CGM.getModule().getOrInsertComdat(GpuBinaryHandle->getName()));
     GpuBinaryHandle->setAlignment(CGM.getPointerAlign().getAsAlign());
