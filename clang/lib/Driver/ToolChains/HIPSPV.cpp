@@ -16,6 +16,7 @@
 #include "clang/Driver/Options.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Path.h"
+#include "llvm/Support/raw_ostream.h"
 
 using namespace clang::driver;
 using namespace clang::driver::toolchains;
@@ -60,6 +61,58 @@ static std::string findPassPlugin(const Driver &D,
   return std::string();
 }
 
+// Takes an Input Archive (.a) static library and unbundles the device code
+// suitable for the current HIPSPV toolchain target. Returns the path to the
+// unbundled device bitcode file.
+const char *HIPSPV::Linker::unbundleStaticLibrary(Compilation &C,
+                                                  const JobAction &JA,
+                                                  const InputInfo &Input,
+                                                  const llvm::opt::ArgList &Args) const {
+  const HIPSPVToolChain &TC = static_cast<const HIPSPVToolChain &>(getToolChain());
+  const llvm::Triple &DeviceTriple = TC.getTriple();
+
+  // Generate a temporary path prefix for the unbundled output.
+  // The bundler will append -<triple>.<type>.
+  SmallString<128> OutputPrefix(C.getDriver().GetTemporaryPath(
+      llvm::sys::path::stem(Input.getFilename()), "unbundled"));
+
+  // Construct the expected output filename based on the bundler's naming scheme.
+  SmallString<128> OutputFilename = OutputPrefix;
+  OutputFilename += "-";
+  OutputFilename += DeviceTriple.getTriple();
+  OutputFilename += ".bc"; // Assuming bitcode output is desired for linking.
+  const char *OutputFilenameStr = C.addTempFile(Args.MakeArgString(OutputFilename));
+
+  // Construct the arguments for clang-offload-bundler
+  const char *TypeArg = Args.MakeArgString("-type=a");
+  const char *InputArg =
+      Args.MakeArgString(std::string("-input=") + Input.getFilename());
+  const char *TargetsArg = Args.MakeArgString(std::string("-targets=hip-spirv64-generic"));
+  const char *OutputArg =
+      Args.MakeArgString(std::string("-output=") + OutputFilename.c_str());
+  const char *UnbundleArg = Args.MakeArgString("-unbundle");
+  const char *AllowMissingArg = Args.MakeArgString("-allow-missing-bundles");
+  const char *HipOpenMPArg = Args.MakeArgString("-hip-openmp-compatible");
+
+  const char *BundlerProgram = Args.MakeArgString(
+      TC.GetProgramPath("clang-offload-bundler"));
+
+  ArgStringList BundlerArgs;
+  BundlerArgs.push_back(UnbundleArg);
+  BundlerArgs.push_back(TypeArg);
+  BundlerArgs.push_back(TargetsArg);
+  BundlerArgs.push_back(InputArg);
+  BundlerArgs.push_back(OutputArg);
+  BundlerArgs.push_back(AllowMissingArg);
+
+  // Create the bundler command.
+  C.addCommand(std::make_unique<Command>(
+      JA, *this, ResponseFileSupport::None(), BundlerProgram, BundlerArgs,
+      InputInfoList{Input}, InputInfo(types::TY_LLVM_BC, OutputFilenameStr, "")));
+
+  return OutputFilenameStr;
+}
+
 void HIPSPV::Linker::constructLinkAndEmitSpirvCommand(
     Compilation &C, const JobAction &JA, const InputInfoList &Inputs,
     const InputInfo &Output, const llvm::opt::ArgList &Args) const {
@@ -70,6 +123,19 @@ void HIPSPV::Linker::constructLinkAndEmitSpirvCommand(
 
   // Link LLVM bitcode.
   ArgStringList LinkArgs{};
+
+  // Get the original inputs since currents input args don't have .a
+  const ArgList &OriginalArgs = C.getArgs();
+  for (const auto &Arg : OriginalArgs) {
+    // Check if the argument string ends with .a and is an input file
+    // Maybe there's a better way to do this
+    if (Arg->getAsString(OriginalArgs).rfind(".a") == Arg->getAsString(OriginalArgs).size() - 2) {
+      InputInfo ArchiveInput(types::TY_Object, Arg->getValue(), "");
+      const char *UnbundledFile = unbundleStaticLibrary(C, JA, ArchiveInput, Args);
+      LinkArgs.push_back(UnbundledFile);
+    }
+  }
+
   for (auto Input : Inputs)
     LinkArgs.push_back(Input.getFilename());
   LinkArgs.append({"-o", TempFile});

@@ -31,6 +31,10 @@ public:
                     const llvm::opt::ArgList &TCArgs,
                     const char *LinkingOutput) const override;
 
+  const char *unbundleStaticLibrary(Compilation &C, const JobAction &JA,
+                                  const InputInfo &Input,
+                                  const llvm::opt::ArgList &Args) const;
+
 private:
   void constructLinkAndEmitSpirvCommand(Compilation &C, const JobAction &JA,
                                         const InputInfoList &Inputs,
