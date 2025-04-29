@@ -77,8 +77,7 @@ void HIPSPV::Linker::constructLinkAndEmitSpirvCommand(
   StringRef Arch = TC.getTriple().getArchName();
   StringRef Target = "generic"; // SPIR-V is generic, no specific target ID like -mcpu
   tools::AddStaticDeviceLibsLinking(C, *this, JA, Inputs, Args, LinkArgs, Arch,
-                                  Target, /*IsBitCodeSDL=*/true,
-                                  /*PostClangLink=*/false);
+                                  Target, /*IsBitCodeSDL=*/true);
 
   for (auto Input : Inputs)
     LinkArgs.push_back(Input.getFilename());
