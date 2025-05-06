@@ -313,7 +313,7 @@ public:
     // SPIR-V IDs are represented with a single 32-bit word.
     SizeType = TargetInfo::UnsignedInt;
     resetDataLayout("e-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-"
-                    "v256:256-v512:512-v1024:1024-n8:16:32:64-G1");
+                    "v256:256-v512:512-v1024:1024-G1");
   }
   ArrayRef<Builtin::Info> getTargetBuiltins() const override;
   void getTargetDefines(const LangOptions &Opts,
@@ -337,7 +337,7 @@ public:
     // we take the maximum because it's possible the Host supports wider types.
     MaxAtomicInlineWidth = std::max<unsigned char>(MaxAtomicInlineWidth, 32);
     resetDataLayout("e-p:32:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-"
-                    "v192:256-v256:256-v512:512-v1024:1024-n8:16:32:64-G1");
+                    "v192:256-v256:256-v512:512-v1024:1024-G1");
   }
 
   void getTargetDefines(const LangOptions &Opts,
@@ -361,7 +361,7 @@ public:
     // we take the maximum because it's possible the Host supports wider types.
     MaxAtomicInlineWidth = std::max<unsigned char>(MaxAtomicInlineWidth, 64);
     resetDataLayout("e-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-"
-                    "v256:256-v512:512-v1024:1024-n8:16:32:64-G1");
+                    "v256:256-v512:512-v1024:1024-G1");
   }
 
   void getTargetDefines(const LangOptions &Opts,
