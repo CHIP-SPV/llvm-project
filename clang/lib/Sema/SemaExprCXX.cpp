@@ -2014,6 +2014,11 @@ void Sema::diagnoseUnavailableAlignedAllocation(const FunctionDecl &FD,
                                                 SourceLocation Loc) {
   if (isUnavailableAlignedAllocationFunction(FD)) {
     const llvm::Triple &T = getASTContext().getTargetInfo().getTriple();
+    // Don't diagnose for UnknownOS (e.g., SPIRV) - these are virtual targets
+    // that don't have OS-specific aligned allocation requirements.
+    if (T.getOS() == llvm::Triple::UnknownOS)
+      return;
+    
     StringRef OSName = AvailabilityAttr::getPlatformNameSourceSpelling(
         getASTContext().getTargetInfo().getPlatformName());
     VersionTuple OSVersion = alignedAllocMinVersion(T.getOS());
