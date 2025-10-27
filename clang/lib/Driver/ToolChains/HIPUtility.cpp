@@ -360,6 +360,8 @@ void HIP::constructGenerateObjFileFromHIPFatBinary(
     // Define the first fatbin symbol
     if (HostTriple.isWindowsMSVCEnvironment())
       ObjStream << "  .section .hip_fatbin,\"dw\"\n";
+    else if (HostTriple.isMacOSX())
+      ObjStream << "  .section __HIP,__hip_fatbin\n";
     else {
       ObjStream << "  .protected " << PrimaryHipFatbinSymbol << "\n";
       ObjStream << "  .type " << PrimaryHipFatbinSymbol << ",@object\n";
