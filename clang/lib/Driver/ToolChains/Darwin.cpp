@@ -952,6 +952,8 @@ ToolChain::CXXStdlibType Darwin::GetDefaultCXXStdlibType() const {
 
 /// Darwin provides an ARC runtime starting in MacOS X 10.7 and iOS 5.0.
 ObjCRuntime Darwin::getDefaultObjCRuntime(bool isNonFragile) const {
+  if (!TargetInitialized)
+    return ObjCRuntime(ObjCRuntime::FragileMacOSX, VersionTuple());
   if (isTargetWatchOSBased())
     return ObjCRuntime(ObjCRuntime::WatchOS, TargetVersion);
   if (isTargetIOSBased())
@@ -970,6 +972,8 @@ ObjCRuntime Darwin::getDefaultObjCRuntime(bool isNonFragile) const {
 
 /// Darwin provides a blocks runtime starting in MacOS X 10.6 and iOS 3.2.
 bool Darwin::hasBlocksRuntime() const {
+  if (!TargetInitialized)
+    return true;
   if (isTargetWatchOSBased() || isTargetDriverKit() || isTargetXROS())
     return true;
   else if (isTargetIOSBased())
@@ -1150,7 +1154,8 @@ void DarwinClang::addClangWarningOptions(ArgStringList &CC1Args) const {
   CC1Args.push_back("-Werror=undef-prefix");
 
   // For modern targets, promote certain warnings to errors.
-  if (isTargetWatchOSBased() || getTriple().isArch64Bit()) {
+  // Skip this for offload device compilation where target may not be initialized.
+  if (TargetInitialized && (isTargetWatchOSBased() || getTriple().isArch64Bit())) {
     // Always enable -Wdeprecated-objc-isa-usage and promote it
     // to an error.
     CC1Args.push_back("-Wdeprecated-objc-isa-usage");
@@ -1253,6 +1258,9 @@ void DarwinClang::AddLinkARCArgs(const ArgList &Args,
 }
 
 unsigned DarwinClang::GetDefaultDwarfVersion() const {
+  // When target is not initialized, return a safe default.
+  if (!TargetInitialized)
+    return 5;
   // Default to use DWARF 2 on OS X 10.10 / iOS 8 and lower.
   if ((isTargetMacOSBased() && isMacosxVersionLT(10, 11)) ||
       (isTargetIOSBased() && isIPhoneOSVersionLT(9)))
@@ -3504,6 +3512,11 @@ void Darwin::CheckObjCARC() const {
 }
 
 SanitizerMask Darwin::getSupportedSanitizers() const {
+  // When target is not initialized (e.g., for offload device compilation),
+  // return base sanitizer support only.
+  if (!TargetInitialized)
+    return ToolChain::getSupportedSanitizers();
+
   const bool IsX86_64 = getTriple().getArch() == llvm::Triple::x86_64;
   const bool IsAArch64 = getTriple().getArch() == llvm::Triple::aarch64;
   SanitizerMask Res = ToolChain::getSupportedSanitizers();
