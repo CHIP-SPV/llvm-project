@@ -1519,6 +1519,21 @@ static bool isTargetArch(const TargetInfo &TI, const IdentifierInfo *II) {
   std::string ArchName = II->getName().lower() + "--";
   llvm::Triple Arch(ArchName);
   const llvm::Triple &TT = TI.getTriple();
+  
+  // For non-CPU offload targets (spirv, nvptx, amdgcn, etc),
+  // return false gracefully when checking against CPU architectures.
+  // This allows Apple SDK TargetConditionals.h to work correctly
+  // by falling through to its fallback logic instead of hitting #error.
+  if (TT.getArch() == llvm::Triple::spirv ||
+      TT.getArch() == llvm::Triple::spirv32 ||
+      TT.getArch() == llvm::Triple::spirv64) {
+    // spirv targets: only match spirv architectures
+    if (Arch.getArch() != llvm::Triple::spirv &&
+        Arch.getArch() != llvm::Triple::spirv32 &&
+        Arch.getArch() != llvm::Triple::spirv64)
+      return false;
+  }
+  
   if (TT.isThumb()) {
     // arm matches thumb or thumbv7. armv7 matches thumbv7.
     if ((Arch.getSubArch() == llvm::Triple::NoSubArch ||
@@ -1832,6 +1847,18 @@ void Preprocessor::ExpandBuiltinMacro(Token &Tok) {
                    II->getName().starts_with("__builtin_")) {
           return true;
         } else {
+          // For spirv offload targets, hide __is_target_arch to prevent
+          // Apple SDK TargetConditionals.h from using it and hitting an error
+          bool HasTargetArchBuiltin = true;
+          if (II->getName() == "__is_target_arch") {
+            llvm::Triple::ArchType Arch = getTargetInfo().getTriple().getArch();
+            if (Arch == llvm::Triple::spirv ||
+                Arch == llvm::Triple::spirv32 ||
+                Arch == llvm::Triple::spirv64) {
+              HasTargetArchBuiltin = false;
+            }
+          }
+          
           return llvm::StringSwitch<bool>(II->getName())
               // Report builtin templates as being builtins.
               .Case("__make_integer_seq", getLangOpts().CPlusPlus)
@@ -1839,7 +1866,7 @@ void Preprocessor::ExpandBuiltinMacro(Token &Tok) {
               // Likewise for some builtin preprocessor macros.
               // FIXME: This is inconsistent; we usually suggest detecting
               // builtin macros via #ifdef. Don't add more cases here.
-              .Case("__is_target_arch", true)
+              .Case("__is_target_arch", HasTargetArchBuiltin)
               .Case("__is_target_vendor", true)
               .Case("__is_target_os", true)
               .Case("__is_target_environment", true)
