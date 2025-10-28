@@ -339,6 +339,8 @@ void HIP::constructGenerateObjFileFromHIPFatBinary(
     // Define the first gpubin handle symbol
     if (HostTriple.isWindowsMSVCEnvironment())
       ObjStream << "  .section .hip_gpubin_handle,\"dw\"\n";
+    else if (HostTriple.isMacOSX())
+      ObjStream << "  .section __HIP,__hipgpubin\n";
     else {
       ObjStream << "  .protected " << PrimaryGpuBinHandleSymbol << "\n";
       ObjStream << "  .type " << PrimaryGpuBinHandleSymbol << ",@object\n";

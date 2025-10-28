@@ -299,6 +299,12 @@ GlobalVariable *createFatbinDesc(Module &M, ArrayRef<char> Image, bool IsHIP,
   FatbinDesc->setSection(FatbinWrapperSection);
   FatbinDesc->setAlignment(Align(8));
 
+  // For Darwin/MachO targets, use Hidden visibility to avoid ELF directives
+  if (Triple.isMacOSX() || Triple.isOSDarwin()) {
+    Fatbin->setVisibility(GlobalValue::HiddenVisibility);
+    FatbinDesc->setVisibility(GlobalValue::HiddenVisibility);
+  }
+
   return FatbinDesc;
 }
 
@@ -555,6 +561,11 @@ void createRegisterFatbinFunction(Module &M, GlobalVariable *FatbinDesc,
       M, PtrTy, false, llvm::GlobalValue::InternalLinkage,
       llvm::ConstantPointerNull::get(PtrTy),
       (IsHIP ? ".hip.binary_handle" : ".cuda.binary_handle") + Suffix);
+
+  // For Darwin/MachO targets, use Hidden visibility to avoid ELF directives
+  llvm::Triple ModTriple(M.getTargetTriple());
+  if (ModTriple.isMacOSX() || ModTriple.isOSDarwin())
+    BinaryHandleGlobal->setVisibility(llvm::GlobalValue::HiddenVisibility);
 
   // Create the constructor to register this image with the runtime.
   IRBuilder<> CtorBuilder(BasicBlock::Create(C, "entry", CtorFunc));
