@@ -106,9 +106,17 @@ private:
         std::string ID = IA->getId().str();
         if (!ID.empty()) {
           ID = llvm::utohexstr(llvm::MD5Hash(ID), /*LowerCase=*/true);
-          FatBinSymbols.insert((FatBinPrefix + Twine('_') + ID).str());
-          GPUBinHandleSymbols.insert(
-              (GPUBinHandlePrefix + Twine('_') + ID).str());
+          // For RDC on macOS, use common symbols instead of per-file symbols
+          bool IsRDCOnMacOS = C.getArgs().hasArg(options::OPT_fgpu_rdc) &&
+                              C.getSingleOffloadToolChain<Action::OFK_Host>()->getTriple().isMacOSX();
+          if (IsRDCOnMacOS) {
+            FatBinSymbols.insert(FatBinPrefix);
+            GPUBinHandleSymbols.insert(GPUBinHandlePrefix);
+          } else {
+            FatBinSymbols.insert((FatBinPrefix + Twine('_') + ID).str());
+            GPUBinHandleSymbols.insert(
+                (GPUBinHandlePrefix + Twine('_') + ID).str());
+          }
           continue;
         }
         if (IA->getInputArg().getNumValues() == 0)
@@ -346,15 +354,17 @@ void HIP::constructGenerateObjFileFromHIPFatBinary(
       ObjStream << "  .type " << PrimaryGpuBinHandleSymbol << ",@object\n";
       ObjStream << "  .section .hip_gpubin_handle,\"aw\"\n";
     }
-    ObjStream << "  .globl " << PrimaryGpuBinHandleSymbol << "\n";
+    // Darwin requires an extra leading underscore for C symbols
+    std::string GpuBinHandleAsm = HostTriple.isMacOSX() ? "_" + PrimaryGpuBinHandleSymbol : PrimaryGpuBinHandleSymbol;
+    ObjStream << "  .globl " << GpuBinHandleAsm << "\n";
     ObjStream << "  .p2align 3\n"; // Align 8
-    ObjStream << PrimaryGpuBinHandleSymbol << ":\n";
+    ObjStream << GpuBinHandleAsm << ":\n";
     ObjStream << "  .zero 8\n"; // Size 8
 
     // Generate alias directives for other gpubin handle symbols
     for (const auto &AliasSymbol : AliasGpuBinHandleSymbols) {
       ObjStream << "  .globl " << AliasSymbol << "\n";
-      ObjStream << "  .set " << AliasSymbol << "," << PrimaryGpuBinHandleSymbol
+      ObjStream << "  .set " << AliasSymbol << "," << GpuBinHandleAsm
                 << "\n";
     }
   }
@@ -369,7 +379,9 @@ void HIP::constructGenerateObjFileFromHIPFatBinary(
       ObjStream << "  .type " << PrimaryHipFatbinSymbol << ",@object\n";
       ObjStream << "  .section .hip_fatbin,\"a\",@progbits\n";
     }
-    ObjStream << "  .globl " << PrimaryHipFatbinSymbol << "\n";
+    // Darwin requires an extra leading underscore for C symbols
+    std::string HipFatbinAsm = HostTriple.isMacOSX() ? "_" + PrimaryHipFatbinSymbol : PrimaryHipFatbinSymbol;
+    ObjStream << "  .globl " << HipFatbinAsm << "\n";
     ObjStream << "  .p2align " << llvm::Log2(llvm::Align(HIPCodeObjectAlign))
               << "\n";
     // Generate alias directives for other fatbin symbols
@@ -378,7 +390,7 @@ void HIP::constructGenerateObjFileFromHIPFatBinary(
       ObjStream << "  .set " << AliasSymbol << "," << PrimaryHipFatbinSymbol
                 << "\n";
     }
-    ObjStream << PrimaryHipFatbinSymbol << ":\n";
+    ObjStream << HipFatbinAsm << ":\n";
     ObjStream << "  .incbin ";
     llvm::sys::printArg(ObjStream, BundleFile, /*Quote=*/true);
     ObjStream << "\n";

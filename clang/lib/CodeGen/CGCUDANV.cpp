@@ -740,7 +740,7 @@ llvm::Function *CGNVCUDARuntime::makeModuleCtorFunction() {
 
   llvm::Function *ModuleCtorFunc = llvm::Function::Create(
       llvm::FunctionType::get(VoidTy, false),
-      RelocatableDeviceCode ? llvm::GlobalValue::ExternalLinkage : llvm::GlobalValue::InternalLinkage,
+      llvm::GlobalValue::InternalLinkage,
       addUnderscoredPrefixToName("_module_ctor"), &TheModule);
   llvm::BasicBlock *CtorEntryBB =
       llvm::BasicBlock::Create(Context, "entry", ModuleCtorFunc);
@@ -993,7 +993,7 @@ llvm::Function *CGNVCUDARuntime::makeModuleDtorFunction() {
 
   llvm::Function *ModuleDtorFunc = llvm::Function::Create(
       llvm::FunctionType::get(VoidTy, false),
-      RelocatableDeviceCode ? llvm::GlobalValue::ExternalLinkage : llvm::GlobalValue::InternalLinkage,
+      llvm::GlobalValue::InternalLinkage,
       addUnderscoredPrefixToName("_module_dtor"), &TheModule);
 
   llvm::BasicBlock *DtorEntryBB =
