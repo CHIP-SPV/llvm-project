@@ -740,7 +740,7 @@ llvm::Function *CGNVCUDARuntime::makeModuleCtorFunction() {
 
   llvm::Function *ModuleCtorFunc = llvm::Function::Create(
       llvm::FunctionType::get(VoidTy, false),
-      llvm::GlobalValue::InternalLinkage,
+      RelocatableDeviceCode ? llvm::GlobalValue::ExternalLinkage : llvm::GlobalValue::InternalLinkage,
       addUnderscoredPrefixToName("_module_ctor"), &TheModule);
   llvm::BasicBlock *CtorEntryBB =
       llvm::BasicBlock::Create(Context, "entry", ModuleCtorFunc);
@@ -781,7 +781,14 @@ llvm::Function *CGNVCUDARuntime::makeModuleCtorFunction() {
       FatBinStr = new llvm::GlobalVariable(
           CGM.getModule(), CGM.Int8Ty,
           /*isConstant=*/true, llvm::GlobalValue::ExternalLinkage, nullptr,
-          "__hip_fatbin_" + CGM.getContext().getCUIDHash(), nullptr,
+          ([&]() {
+          std::string name;
+          if (RelocatableDeviceCode && CGM.getTriple().isMacOSX())
+            name = "__hip_fatbin";
+          else
+            name = ("__hip_fatbin_" + CGM.getContext().getCUIDHash()).str();
+          return name;
+        })(), nullptr,
           llvm::GlobalVariable::NotThreadLocal);
       cast<llvm::GlobalVariable>(FatBinStr)->setSection(FatbinConstantName);
     }
@@ -847,9 +854,16 @@ llvm::Function *CGNVCUDARuntime::makeModuleCtorFunction() {
         TheModule, PtrTy, /*isConstant=*/false, Linkage,
         /*Initializer=*/
         CudaGpuBinary ? llvm::ConstantPointerNull::get(PtrTy) : nullptr,
-        CudaGpuBinary
-            ? "__hip_gpubin_handle"
-            : "__hip_gpubin_handle_" + CGM.getContext().getCUIDHash());
+        ([&]() {
+        std::string name;
+        if (CudaGpuBinary)
+          name = "__hip_gpubin_handle";
+        else if (RelocatableDeviceCode && CGM.getTriple().isMacOSX())
+          name = "__hip_gpubin_handle";
+        else
+          name = ("__hip_gpubin_handle_" + CGM.getContext().getCUIDHash()).str();
+        return name;
+      })());
     GpuBinaryHandle->setAlignment(CGM.getPointerAlign().getAsAlign());
     // Prevent the weak symbol in different shared libraries being merged.
     if (Linkage != llvm::GlobalValue::InternalLinkage)
@@ -979,7 +993,7 @@ llvm::Function *CGNVCUDARuntime::makeModuleDtorFunction() {
 
   llvm::Function *ModuleDtorFunc = llvm::Function::Create(
       llvm::FunctionType::get(VoidTy, false),
-      llvm::GlobalValue::InternalLinkage,
+      RelocatableDeviceCode ? llvm::GlobalValue::ExternalLinkage : llvm::GlobalValue::InternalLinkage,
       addUnderscoredPrefixToName("_module_dtor"), &TheModule);
 
   llvm::BasicBlock *DtorEntryBB =
