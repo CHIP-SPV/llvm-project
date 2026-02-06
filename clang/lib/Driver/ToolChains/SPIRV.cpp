@@ -6,16 +6,20 @@
 //
 //===----------------------------------------------------------------------===//
 #include "SPIRV.h"
+#include "HIPUtility.h"
 #include "clang/Driver/CommonArgs.h"
 #include "clang/Driver/Compilation.h"
 #include "clang/Driver/Driver.h"
 #include "clang/Driver/InputInfo.h"
 #include "clang/Options/Options.h"
+#include "llvm/Support/FileSystem.h"
+#include "llvm/Support/Path.h"
 
 using namespace clang::driver;
 using namespace clang::driver::toolchains;
 using namespace clang::driver::tools;
 using namespace llvm::opt;
+using namespace clang;
 
 void SPIRV::constructTranslateCommand(Compilation &C, const Tool &T,
                                       const JobAction &JA,
@@ -32,15 +36,20 @@ void SPIRV::constructTranslateCommand(Compilation &C, const Tool &T,
 
   CmdArgs.append({"-o", Output.getFilename()});
 
-  // Try to find "llvm-spirv-<LLVM_VERSION_MAJOR>". Otherwise, fall back to
-  // plain "llvm-spirv".
-  using namespace std::string_literals;
-  auto VersionedTool = "llvm-spirv-"s + std::to_string(LLVM_VERSION_MAJOR);
-  std::string ExeCand = T.getToolChain().GetProgramPath(VersionedTool.c_str());
-  if (!llvm::sys::fs::can_execute(ExeCand))
-    ExeCand = T.getToolChain().GetProgramPath("llvm-spirv");
+  // Derive llvm-spirv path from clang path to ensure we use the same LLVM version.
+  // Try versioned tool first, then fall back to unversioned.
+  std::string TranslateCmdClangPath = C.getDriver().getClangProgramPath();
+  SmallString<128> TranslateCmdPath(TranslateCmdClangPath);
+  llvm::sys::path::remove_filename(TranslateCmdPath);
+  SmallString<128> TranslateCmdVersionedPath(TranslateCmdPath);
+  llvm::sys::path::append(TranslateCmdVersionedPath, "llvm-spirv-" + std::to_string(LLVM_VERSION_MAJOR));
+  if (llvm::sys::fs::can_execute(TranslateCmdVersionedPath)) {
+    llvm::sys::path::append(TranslateCmdPath, "llvm-spirv-" + std::to_string(LLVM_VERSION_MAJOR));
+  } else {
+    llvm::sys::path::append(TranslateCmdPath, "llvm-spirv");
+  }
 
-  const char *Exec = C.getArgs().MakeArgString(ExeCand);
+  const char *Exec = C.getArgs().MakeArgString(TranslateCmdPath);
   C.addCommand(std::make_unique<Command>(JA, T, ResponseFileSupport::None(),
                                          Exec, CmdArgs, Input, Output));
 }
@@ -135,6 +144,24 @@ clang::driver::Tool *SPIRVToolChain::buildLinker() const {
   return new tools::SPIRV::Linker(*this);
 }
 
+// Locates HIP pass plugin for chipstar targets.
+static std::string findPassPlugin(const Driver &D,
+                                  const llvm::opt::ArgList &Args) {
+  llvm::StringRef hipPath = Args.getLastArgValue(options::OPT_hip_path_EQ);
+  if (!hipPath.empty()) {
+    llvm::SmallString<128> PluginPath(hipPath);
+    llvm::sys::path::append(PluginPath, "lib", "libLLVMHipSpvPasses.so");
+    if (llvm::sys::fs::exists(PluginPath))
+      return PluginPath.str().str();
+    PluginPath.assign(hipPath);
+    llvm::sys::path::append(PluginPath, "lib", "llvm",
+                            "libLLVMHipSpvPasses.so");
+    if (llvm::sys::fs::exists(PluginPath))
+      return PluginPath.str().str();
+  }
+  return std::string();
+}
+
 void SPIRV::Linker::ConstructJob(Compilation &C, const JobAction &JA,
                                  const InputInfo &Output,
                                  const InputInfoList &Inputs,
@@ -144,7 +171,62 @@ void SPIRV::Linker::ConstructJob(Compilation &C, const JobAction &JA,
     constructLLVMLinkCommand(C, *this, JA, Output, Inputs, Args);
     return;
   }
+  
   const ToolChain &ToolChain = getToolChain();
+  auto Triple = ToolChain.getTriple();
+  
+  // For chipstar targets with new offload driver, implement merge-then-process flow:
+  // 1. Merge bitcode with llvm-link
+  // 2. Run HipSpvPasses plugin
+  // 3. Translate to SPIR-V with llvm-spirv
+  // 4. Pass to spirv-link
+  if (Triple.getOS() == llvm::Triple::ChipStar) {
+    assert(!Inputs.empty() && "Must have at least one input.");
+    std::string Name = std::string(llvm::sys::path::stem(Output.getFilename()));
+    const char *LinkBCFile = HIP::getTempFile(C, Name + "-link", "bc");
+    
+    // Step 1: Merge all bitcode files with llvm-link
+    ArgStringList LinkArgs;
+    for (auto Input : Inputs)
+      LinkArgs.push_back(Input.getFilename());
+    tools::constructLLVMLinkCommand(C, *this, JA, Inputs, LinkArgs, Output, Args,
+                                    LinkBCFile);
+    
+    // Step 2: Run HipSpvPasses plugin
+    const char *ProcessedBCFile = LinkBCFile;
+    auto PassPluginPath = findPassPlugin(C.getDriver(), Args);
+    if (!PassPluginPath.empty()) {
+      const char *PassPathCStr = C.getArgs().MakeArgString(PassPluginPath);
+      const char *OptOutput = HIP::getTempFile(C, Name + "-lower", "bc");
+      ArgStringList OptArgs{LinkBCFile,     "-load-pass-plugin",
+                            PassPathCStr, "-passes=hip-post-link-passes",
+                            "-o",         OptOutput};
+      // Derive opt path from clang path to ensure we use the same LLVM version
+      std::string ClangPath = C.getDriver().getClangProgramPath();
+      SmallString<128> OptPath(ClangPath);
+      llvm::sys::path::remove_filename(OptPath);
+      llvm::sys::path::append(OptPath, "opt");
+      const char *Opt = C.getArgs().MakeArgString(OptPath);
+      C.addCommand(std::make_unique<Command>(
+          JA, *this, ResponseFileSupport::None(), Opt, OptArgs, Inputs, Output));
+      ProcessedBCFile = OptOutput;
+    }
+    
+    // Step 3: Translate bitcode to SPIR-V (output goes directly to final output)
+    llvm::opt::ArgStringList TrArgs;
+    bool HasNoSubArch = Triple.getSubArch() == llvm::Triple::NoSubArch;
+    if (HasNoSubArch)
+      TrArgs.push_back("--spirv-max-version=1.2");
+    TrArgs.push_back("--spirv-ext=-all"
+                     ",+SPV_INTEL_function_pointers"
+                     ",+SPV_INTEL_subgroups");
+    InputInfo TrInput = InputInfo(types::TY_LLVM_BC, ProcessedBCFile, "");
+    constructTranslateCommand(C, *this, JA, Output, TrInput, TrArgs);
+    return;
+  }
+  
+  // Default flow for non-chipstar targets
+  // spirv-link is from SPIRV-Tools (Khronos), not LLVM, so use PATH lookup
   std::string Linker = ToolChain.GetProgramPath(getShortName());
   ArgStringList CmdArgs;
   AddLinkerInputs(getToolChain(), Inputs, Args, CmdArgs, JA);

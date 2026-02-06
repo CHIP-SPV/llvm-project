@@ -686,10 +686,12 @@ std::unique_ptr<TargetInfo> AllocateTarget(const llvm::Triple &Triple,
     return std::make_unique<SPIRV32TargetInfo>(Triple, Opts);
   }
   case llvm::Triple::spirv64: {
-    if (os != llvm::Triple::UnknownOS ||
+    if ((os != llvm::Triple::UnknownOS && os != llvm::Triple::ChipStar) ||
         Triple.getEnvironment() != llvm::Triple::UnknownEnvironment) {
       if (os == llvm::Triple::OSType::AMDHSA)
         return std::make_unique<SPIRV64AMDGCNTargetInfo>(Triple, Opts);
+      if (os == llvm::Triple::ChipStar)
+        return std::make_unique<SPIRV64TargetInfo>(Triple, Opts);
       return nullptr;
     }
     if (Triple.getVendor() == llvm::Triple::Intel)

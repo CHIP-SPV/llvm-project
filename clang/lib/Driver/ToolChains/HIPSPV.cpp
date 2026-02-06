@@ -83,16 +83,39 @@ void HIPSPV::Linker::constructLinkAndEmitSpirvCommand(
     ArgStringList OptArgs{TempFile,     "-load-pass-plugin",
                           PassPathCStr, "-passes=hip-post-link-passes",
                           "-o",         OptOutput};
-    const char *Opt = Args.MakeArgString(getToolChain().GetProgramPath("opt"));
+    // Derive opt path from clang path to ensure we use the same LLVM version
+    std::string ClangPath = C.getDriver().getClangProgramPath();
+    SmallString<128> OptPath(ClangPath);
+    llvm::sys::path::remove_filename(OptPath);
+    llvm::sys::path::append(OptPath, "opt");
+    const char *Opt = C.getArgs().MakeArgString(OptPath);
     C.addCommand(std::make_unique<Command>(
         JA, *this, ResponseFileSupport::None(), Opt, OptArgs, Inputs, Output));
     TempFile = OptOutput;
   }
 
   // Emit SPIR-V binary.
+  llvm::opt::ArgStringList TrArgs;
+  auto T = getToolChain().getTriple();
+  bool HasNoSubArch = T.getSubArch() == llvm::Triple::NoSubArch;
+  if (T.getOS() == llvm::Triple::ChipStar) {
+    // chipStar needs 1.2 for supporting warp-level primitivies via sub-group
+    // extensions.  Strictly put we'd need 1.3 for the standard non-extension
+    // shuffle operations, but it's not supported by any backend driver of the
+    // chipStar.
+    if (HasNoSubArch)
+      TrArgs.push_back("--spirv-max-version=1.2");
+    TrArgs.push_back("--spirv-ext=-all"
+                     // Needed for experimental indirect call support.
+                     ",+SPV_INTEL_function_pointers"
+                     // Needed for shuffles below SPIR-V 1.3
+                     ",+SPV_INTEL_subgroups");
+  } else {
+    if (HasNoSubArch)
+      TrArgs.push_back("--spirv-max-version=1.1");
+    TrArgs.push_back("--spirv-ext=+all");
+  }
 
-  llvm::opt::ArgStringList TrArgs{"--spirv-max-version=1.1",
-                                  "--spirv-ext=+all"};
   InputInfo TrInput = InputInfo(types::TY_LLVM_BC, TempFile, "");
   SPIRV::constructTranslateCommand(C, *this, JA, Output, TrInput, TrArgs);
 }
@@ -125,7 +148,11 @@ HIPSPVToolChain::HIPSPVToolChain(const Driver &D, const llvm::Triple &Triple,
 void HIPSPVToolChain::addClangTargetOptions(
     const llvm::opt::ArgList &DriverArgs, llvm::opt::ArgStringList &CC1Args,
     Action::OffloadKind DeviceOffloadingKind) const {
-  HostTC.addClangTargetOptions(DriverArgs, CC1Args, DeviceOffloadingKind);
+  // NOTE: Unlike other HIP toolchains, we do NOT delegate to
+  // HostTC.addClangTargetOptions() here. On macOS (Darwin), the host toolchain
+  // adds flags like -faligned-alloc-unavailable that are specific to macOS
+  // libc++ and break SPIR-V device compilation. SPIR-V device code doesn't
+  // have the same stdlib limitations as the host.
 
   assert(DeviceOffloadingKind == Action::OFK_HIP &&
          "Only HIP offloading kinds are supported for GPUs.");

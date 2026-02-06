@@ -131,6 +131,9 @@ static StringRef ExecutableName;
 /// Binary path for the CUDA installation.
 static std::string CudaBinaryPath;
 
+/// HIP installation path.
+static std::string HipPath;
+
 /// Mutex lock to protect writes to shared TempFiles in parallel.
 static std::mutex TempFilesMutex;
 
@@ -410,7 +413,7 @@ fatbinary(ArrayRef<std::pair<StringRef, StringRef>> InputFiles,
 
 namespace amdgcn {
 Expected<StringRef>
-fatbinary(ArrayRef<std::pair<StringRef, StringRef>> InputFiles,
+fatbinary(ArrayRef<std::tuple<StringRef, StringRef, StringRef>> InputFilesWithTriple,
           const ArgList &Args) {
   llvm::TimeTraceScope TimeScope("AMDGPU Fatbinary");
 
@@ -441,11 +444,28 @@ fatbinary(ArrayRef<std::pair<StringRef, StringRef>> InputFiles,
         Args.MakeArgString(Twine("-compression-level=") + Arg->getValue()));
 
   SmallVector<StringRef> Targets = {"-targets=host-x86_64-unknown-linux-gnu"};
-  for (const auto &[File, Arch] : InputFiles) {
-    Targets.push_back(Saver.save(Arch == "amdgcnspirv"
-                                     ? "hip-spirv64-amd-amdhsa--" + Arch
-                                     : "hip-amdgcn-amd-amdhsa--" + Arch));
+  for (const auto &[File, Arch, TripleStr] : InputFilesWithTriple) {
+    llvm::Triple Triple(TripleStr);
+    // For SPIR-V targets, derive arch from triple if not provided
+    StringRef EffectiveArch = Arch;
+    if (EffectiveArch.empty() && Triple.isSPIRV()) {
+      EffectiveArch = Triple.getArchName();
+    }
+    llvm::errs() << "[DEBUG] fatbinary: File=" << File << " Arch=" << EffectiveArch << " TripleStr=" << TripleStr << " isSPIRV=" << Triple.isSPIRV() << "\n";
+    StringRef BundleID;
+    if (EffectiveArch == "amdgcnspirv") {
+      BundleID = Saver.save("hip-spirv64-amd-amdhsa--" + EffectiveArch);
+    } else if (Triple.isSPIRV()) {
+      // ChipStar and other SPIR-V HIP targets: use hip-spirv64-<vendor>-<os>--<arch>
+      BundleID = Saver.save("hip-spirv64-" + Triple.getVendorName() + "-" +
+                            Triple.getOSName() + "--" + EffectiveArch);
+    } else {
+      BundleID = Saver.save("hip-amdgcn-amd-amdhsa--" + EffectiveArch);
+    }
+    llvm::errs() << "[DEBUG] fatbinary: BundleID=" << BundleID << "\n";
+    Targets.push_back(BundleID);
   }
+  llvm::errs() << "[DEBUG] fatbinary Targets: " << llvm::join(Targets, ",") << "\n";
   CmdArgs.push_back(Saver.save(llvm::join(Targets, ",")));
 
 #ifdef _WIN32
@@ -453,7 +473,7 @@ fatbinary(ArrayRef<std::pair<StringRef, StringRef>> InputFiles,
 #else
   CmdArgs.push_back("-input=/dev/null");
 #endif
-  for (const auto &[File, Arch] : InputFiles)
+  for (const auto &[File, Arch, TripleStr] : InputFilesWithTriple)
     CmdArgs.push_back(Saver.save("-input=" + File));
 
   CmdArgs.push_back(Saver.save("-output=" + *TempFileOrErr));
@@ -516,6 +536,11 @@ Expected<StringRef> clang(ArrayRef<StringRef> InputFiles, const ArgList &Args,
 
   if (!Triple.isNVPTX() && !Triple.isSPIRV())
     CmdArgs.push_back("-Wl,--no-undefined");
+
+  // For SPIR-V targets (HIP/chipStar), pass the HIP path to clang so it can
+  // find the HipSpvPasses plugin for device code lowering.
+  if (Triple.isSPIRV() && !HipPath.empty())
+    CmdArgs.push_back(Args.MakeArgString("--hip-path=" + HipPath));
 
   for (StringRef InputFile : InputFiles)
     CmdArgs.push_back(InputFile);
@@ -816,12 +841,14 @@ bundleCuda(ArrayRef<OffloadingImage> Images, const ArgList &Args) {
 
 Expected<SmallVector<std::unique_ptr<MemoryBuffer>>>
 bundleHIP(ArrayRef<OffloadingImage> Images, const ArgList &Args) {
-  SmallVector<std::pair<StringRef, StringRef>, 4> InputFiles;
+  // Collect (file, arch, triple) tuples for bundling
+  SmallVector<std::tuple<StringRef, StringRef, StringRef>, 4> InputFilesWithTriple;
   for (const OffloadingImage &Image : Images)
-    InputFiles.emplace_back(std::make_pair(Image.Image->getBufferIdentifier(),
-                                           Image.StringData.lookup("arch")));
+    InputFilesWithTriple.emplace_back(Image.Image->getBufferIdentifier(),
+                                      Image.StringData.lookup("arch"),
+                                      Image.StringData.lookup("triple"));
 
-  auto FileOrErr = amdgcn::fatbinary(InputFiles, Args);
+  auto FileOrErr = amdgcn::fatbinary(InputFilesWithTriple, Args);
   if (!FileOrErr)
     return FileOrErr.takeError();
 
@@ -1310,6 +1337,7 @@ int main(int Argc, char **Argv) {
   DryRun = Args.hasArg(OPT_dry_run);
   SaveTemps = Args.hasArg(OPT_save_temps);
   CudaBinaryPath = Args.getLastArgValue(OPT_cuda_path_EQ).str();
+  HipPath = Args.getLastArgValue(OPT_hip_path_EQ).str();
 
   llvm::Triple Triple(
       Args.getLastArgValue(OPT_host_triple_EQ, sys::getDefaultTargetTriple()));
