@@ -72,10 +72,58 @@ void HIPSPV::Linker::constructLinkAndEmitSpirvCommand(
   tools::constructLLVMLinkCommand(C, *this, JA, Inputs, LinkArgs, Output, Args,
                                   TempFile);
 
-  // Post-link HIP lowering.
+  auto T = getToolChain().getTriple();
 
-  // Run LLVM IR passes to lower/expand/emulate HIP code that does not translate
-  // to SPIR-V (E.g. dynamic shared memory).
+  if (T.getOS() == llvm::Triple::ChipStar) {
+    // chipStar: run HipSpvPasses via opt, then use the in-tree SPIR-V backend
+    // for codegen (replaces the external llvm-spirv translator).
+
+    // Step 2: Run HipSpvPasses plugin via opt (must run on LLVM IR before
+    // the SPIR-V backend lowers to MIR)
+    auto PassPluginPath = findPassPlugin(C.getDriver(), Args);
+    if (!PassPluginPath.empty()) {
+      const char *PassPathCStr = C.getArgs().MakeArgString(PassPluginPath);
+      const char *OptOutput = HIP::getTempFile(C, Name + "-lower", "bc");
+      ArgStringList OptArgs{TempFile,     "-load-pass-plugin",
+                            PassPathCStr, "-passes=hip-post-link-passes",
+                            "-o",         OptOutput};
+      std::string ClangPath = C.getDriver().getClangProgramPath();
+      SmallString<128> OptPath(ClangPath);
+      llvm::sys::path::remove_filename(OptPath);
+      llvm::sys::path::append(OptPath, "opt");
+      const char *Opt = C.getArgs().MakeArgString(OptPath);
+      C.addCommand(std::make_unique<Command>(
+          JA, *this, ResponseFileSupport::None(), Opt, OptArgs, Inputs,
+          Output));
+      TempFile = OptOutput;
+    }
+
+    // Step 3: Compile processed bitcode to SPIR-V using the in-tree backend.
+    // Use -c to skip the link phase (spirv-link is not needed for single TU).
+    ArgStringList ClangArgs;
+    ClangArgs.push_back("--no-default-config");
+    ClangArgs.push_back("-c");
+    ClangArgs.push_back(
+        C.getArgs().MakeArgString("--target=" + T.getTriple()));
+
+    ClangArgs.push_back("-mllvm");
+    ClangArgs.push_back("-spirv-ext=+SPV_INTEL_function_pointers"
+                        ",+SPV_INTEL_subgroups"
+                        ",+SPV_EXT_relaxed_printf_string_address_space");
+
+    ClangArgs.push_back(TempFile);
+    ClangArgs.push_back("-o");
+    ClangArgs.push_back(Output.getFilename());
+
+    const char *Clang =
+        C.getArgs().MakeArgString(C.getDriver().getClangProgramPath());
+    C.addCommand(std::make_unique<Command>(
+        JA, *this, ResponseFileSupport::None(), Clang, ClangArgs, Inputs,
+        Output));
+    return;
+  }
+
+  // Non-chipStar: run HIP passes via opt, then translate with llvm-spirv.
   auto PassPluginPath = findPassPlugin(C.getDriver(), Args);
   if (!PassPluginPath.empty()) {
     const char *PassPathCStr = C.getArgs().MakeArgString(PassPluginPath);
@@ -83,7 +131,6 @@ void HIPSPV::Linker::constructLinkAndEmitSpirvCommand(
     ArgStringList OptArgs{TempFile,     "-load-pass-plugin",
                           PassPathCStr, "-passes=hip-post-link-passes",
                           "-o",         OptOutput};
-    // Derive opt path from clang path to ensure we use the same LLVM version
     std::string ClangPath = C.getDriver().getClangProgramPath();
     SmallString<128> OptPath(ClangPath);
     llvm::sys::path::remove_filename(OptPath);
