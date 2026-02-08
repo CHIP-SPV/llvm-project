@@ -900,13 +900,17 @@ SPIRVTypeInst SPIRVGlobalRegistry::getOpTypeArray(uint32_t NumElems,
                                                   bool EmitIR) {
   assert((ElemType->getOpcode() != SPIRV::OpTypeVoid) &&
          "Invalid array element type");
-  SPIRVTypeInst SpvTypeInt32 = getOrCreateSPIRVIntegerType(32, MIRBuilder);
+  // Use the target's pointer width for array length constants so that
+  // spirv64 targets emit i64 lengths. Some OpenCL drivers (e.g. Intel)
+  // expect the array length width to match the target pointer width.
+  unsigned LenWidth = getPointerSize();
+  SPIRVTypeInst SpvTypeLenInt = getOrCreateSPIRVIntegerType(LenWidth, MIRBuilder);
   SPIRVTypeInst ArrayType = nullptr;
   const SPIRVSubtarget &ST =
       cast<SPIRVSubtarget>(MIRBuilder.getMF().getSubtarget());
   if (NumElems != 0) {
     Register NumElementsVReg =
-        buildConstantInt(NumElems, MIRBuilder, SpvTypeInt32, EmitIR);
+        buildConstantInt(NumElems, MIRBuilder, SpvTypeLenInt, EmitIR);
     ArrayType = createOpType(MIRBuilder, [&](MachineIRBuilder &MIRBuilder) {
       return MIRBuilder.buildInstr(SPIRV::OpTypeArray)
           .addDef(createTypeVReg(MIRBuilder))
