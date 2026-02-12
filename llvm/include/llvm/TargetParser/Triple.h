@@ -253,9 +253,9 @@ public:
     Vulkan, // Vulkan SPIR-V
     CheriotRTOS,
     OpenCL,
-    ChipStar,
     Firmware,
-    LastOSType = Firmware
+    ChipStar,
+    LastOSType = ChipStar
   };
   enum EnvironmentType {
     UnknownEnvironment,

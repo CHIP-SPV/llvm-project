@@ -343,10 +343,10 @@ StringRef Triple::getOSTypeName(OSType Kind) {
     return "cheriotrtos";
   case OpenCL:
     return "opencl";
-  case ChipStar:
-    return "chipstar";
   case Firmware:
     return "firmware";
+  case ChipStar:
+    return "chipstar";
   }
 
   llvm_unreachable("Invalid OSType");
@@ -759,8 +759,8 @@ static Triple::OSType parseOS(StringRef OSName) {
       .StartsWith("vulkan", Triple::Vulkan)
       .StartsWith("cheriotrtos", Triple::CheriotRTOS)
       .StartsWith("opencl", Triple::OpenCL)
-      .StartsWith("chipstar", Triple::ChipStar)
       .StartsWith("firmware", Triple::Firmware)
+      .StartsWith("chipstar", Triple::ChipStar)
       .Default(Triple::UnknownOS);
 }
 

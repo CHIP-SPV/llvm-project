@@ -91,7 +91,7 @@ SPIRVSubtarget::SPIRVSubtarget(const Triple &TT, const std::string &CPU,
   // Set the environment based on the target triple.
   if (TargetTriple.getOS() == Triple::Vulkan)
     Env = Shader;
-  else if (TargetTriple.getOS() == Triple::OpenCL ||
+  else if (TargetTriple.getEnvironment() == Triple::OpenCL ||
            TargetTriple.getVendor() == Triple::AMD ||
            TargetTriple.getOS() == Triple::ChipStar)
     Env = Kernel;
