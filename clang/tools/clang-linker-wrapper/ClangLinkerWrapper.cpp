@@ -628,9 +628,51 @@ Expected<StringRef> clang(ArrayRef<StringRef> InputFiles, const ArgList &Args,
       OptOutputFile = *OptOutOrErr;
     }
 
-    ProcessedInputFiles.push_back(OptOutputFile);
+    // Step 3: Convert processed bitcode to SPIR-V.
+    // Check if llvm-spirv translator is available (for builds without the
+    // in-tree SPIR-V backend). If so, use it directly; otherwise use the
+    // SPIR-V backend via clang.
+    bool UseLLVMSpirvTranslator = false;
+    std::string LLVMSpirvPathStr;
+    {
+      auto LLVMSpirvPath =
+          findProgram("llvm-spirv", {getMainExecutable("llvm-spirv")});
+      if (LLVMSpirvPath) {
+        LLVMSpirvPathStr = *LLVMSpirvPath;
+        UseLLVMSpirvTranslator = true;
+      } else {
+        consumeError(LLVMSpirvPath.takeError());
+      }
+    }
+    if (UseLLVMSpirvTranslator) {
+      // Use llvm-spirv translator: BC → SPIR-V binary directly.
+      auto SpirvOutOrErr = createOutputFile(
+          sys::path::filename(ExecutableName) + ".spirv", "spv");
+      if (!SpirvOutOrErr)
+        return SpirvOutOrErr.takeError();
 
-    // Step 3: Configure the inner clang for SPIR-V backend codegen.
+      SmallVector<StringRef, 16> TranslateArgs{
+          LLVMSpirvPathStr,
+          OptOutputFile,
+          "--spirv-max-version=1.1",
+          "--spirv-ext=+all,-SPV_KHR_untyped_pointers,-SPV_KHR_fma",
+          "-o",
+          *SpirvOutOrErr,
+      };
+
+      if (Error Err = executeCommands(LLVMSpirvPathStr, TranslateArgs))
+        return std::move(Err);
+
+      // Replace the input file with the translated SPIR-V.
+      ProcessedInputFiles.clear();
+      ProcessedInputFiles.push_back(*SpirvOutOrErr);
+      // The SPIR-V binary is the final output; skip the inner clang
+      // compilation by returning it directly as the linked image.
+      return *SpirvOutOrErr;
+    }
+
+    // No llvm-spirv available; use the in-tree SPIR-V backend via clang.
+    ProcessedInputFiles.push_back(OptOutputFile);
     CmdArgs.push_back("-mllvm");
     CmdArgs.push_back("-spirv-ext=+SPV_INTEL_function_pointers"
                       ",+SPV_INTEL_subgroups"
