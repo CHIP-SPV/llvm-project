@@ -9354,6 +9354,9 @@ void LinkerWrapper::ConstructJob(Compilation &C, const JobAction &JA,
   if (Arg *A = Args.getLastArg(options::OPT_cuda_path_EQ))
     CmdArgs.push_back(
         Args.MakeArgString(Twine("--cuda-path=") + A->getValue()));
+  if (Arg *A = Args.getLastArg(options::OPT_hip_path_EQ))
+    CmdArgs.push_back(
+        Args.MakeArgString(Twine("--hip-path=") + A->getValue()));
 
   // Construct the link job so we can wrap around it.
   Linker->ConstructJob(C, JA, Output, Inputs, Args, LinkingOutput);
