@@ -160,7 +160,9 @@ void HIPSPV::Linker::constructLinkAndEmitSpirvCommand(
   } else {
     if (HasNoSubArch)
       TrArgs.push_back("--spirv-max-version=1.1");
-    TrArgs.push_back("--spirv-ext=+all");
+    // Disable extensions unsupported by Intel OpenCL/L0 runtimes.
+    TrArgs.push_back("--spirv-ext=+all,-SPV_KHR_untyped_pointers"
+                     ",-SPV_KHR_fma");
   }
 
   InputInfo TrInput = InputInfo(types::TY_LLVM_BC, TempFile, "");
