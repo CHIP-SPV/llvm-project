@@ -390,7 +390,7 @@ public:
            "Invalid architecture for 64-bit SPIR-V.");
     assert((getTriple().getOS() == llvm::Triple::UnknownOS ||
             getTriple().getOS() == llvm::Triple::ChipStar) &&
-           "64-bit SPIR-V target must use unknown or chipstar OS");
+           "64-bit SPIR-V target must use unknown OS or ChipStar");
     assert(getTriple().getEnvironment() == llvm::Triple::UnknownEnvironment &&
            "64-bit SPIR-V target must use unknown environment type");
     PointerWidth = PointerAlign = 64;
