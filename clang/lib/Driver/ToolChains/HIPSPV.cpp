@@ -205,6 +205,12 @@ HIPSPVToolChain::HIPSPVToolChain(const Driver &D, const llvm::Triple &Triple,
 void HIPSPVToolChain::addClangTargetOptions(
     const llvm::opt::ArgList &DriverArgs, llvm::opt::ArgStringList &CC1Args,
     Action::OffloadKind DeviceOffloadingKind) const {
+  if (!HostTC) {
+    assert(DeviceOffloadingKind == Action::OFK_None &&
+           "Need host toolchain for offloading!");
+    return;
+  }
+
   // NOTE: Unlike other HIP toolchains, we do NOT delegate to
   // HostTC.addClangTargetOptions() here. On macOS (Darwin), the host toolchain
   // adds flags like -faligned-alloc-unavailable that are specific to macOS
