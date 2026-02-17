@@ -9381,20 +9381,6 @@ void LinkerWrapper::ConstructJob(Compilation &C, const JobAction &JA,
   Args.ClaimAllArgs(options::OPT_Xoffload_compiler);
   Args.ClaimAllArgs(options::OPT_Xoffload_linker);
 
-  // Forward -Xoffload-compiler<-triple> arguments to the device compiler job.
-  for (Arg *A : Args.filtered(options::OPT_Xoffload_compiler)) {
-    StringRef Val = A->getValue(0);
-    if (Val.empty())
-      CmdArgs.push_back(
-          Args.MakeArgString(Twine("--device-compiler=") + A->getValue(1)));
-    else
-      CmdArgs.push_back(Args.MakeArgString(
-          "--device-compiler=" +
-          ToolChain::getOpenMPTriple(Val.drop_front()).getTriple() + "=" +
-          A->getValue(1)));
-  }
-  Args.ClaimAllArgs(options::OPT_Xoffload_compiler);
-
   // Embed bitcode instead of an object in JIT mode.
   if (Args.hasFlag(options::OPT_fopenmp_target_jit,
                    options::OPT_fno_openmp_target_jit, false))
