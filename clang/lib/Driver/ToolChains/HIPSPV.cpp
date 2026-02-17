@@ -143,7 +143,6 @@ void HIPSPV::Linker::constructLinkAndEmitSpirvCommand(
 
   // Emit SPIR-V binary.
   llvm::opt::ArgStringList TrArgs;
-  auto T = getToolChain().getTriple();
   bool HasNoSubArch = T.getSubArch() == llvm::Triple::NoSubArch;
   if (T.getOS() == llvm::Triple::ChipStar) {
     // chipStar needs 1.2 for supporting warp-level primitivies via sub-group
