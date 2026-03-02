@@ -94,7 +94,7 @@ void HIPSPV::Linker::constructLinkAndEmitSpirvCommand(
   // Strictly put we'd need 1.3 for the standard non-extension shuffle
   // operations, but it's not supported by any target yet.
   llvm::opt::ArgStringList TrArgs{"--spirv-max-version=1.2",
-                                  "--spirv-ext=+all"};
+                                  "--spirv-ext=-all,+SPV_INTEL_function_pointers,+SPV_INTEL_subgroups,+SPV_EXT_shader_atomic_float_add,+SPV_EXT_relaxed_printf_string_address_space"};
   InputInfo TrInput = InputInfo(types::TY_LLVM_BC, TempFile, "");
   SPIRV::constructTranslateCommand(C, *this, JA, Output, TrInput, TrArgs);
 }
