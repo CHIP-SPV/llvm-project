@@ -840,6 +840,17 @@ static bool buildAtomicRMWInst(const SPIRV::IncomingCall *Call, unsigned Opcode,
                                          Semantics, MIRBuilder, GR);
   Register ValueReg = Call->Arguments[1];
   Register ValueTypeReg = GR->getSPIRVTypeID(Call->ReturnType);
+  // For min/max atomics, select signed or unsigned opcode based on the
+  // integer return type's signedness.
+  if (Call->ReturnType->getOpcode() == SPIRV::OpTypeInt) {
+    bool IsUnsigned = Call->ReturnType->getOperand(2).getImm() == 0;
+    if (IsUnsigned) {
+      if (Opcode == SPIRV::OpAtomicSMax)
+        Opcode = SPIRV::OpAtomicUMax;
+      else if (Opcode == SPIRV::OpAtomicSMin)
+        Opcode = SPIRV::OpAtomicUMin;
+    }
+  }
   // support cl_ext_float_atomics
   if (Call->ReturnType->getOpcode() == SPIRV::OpTypeFloat) {
     if (Opcode == SPIRV::OpAtomicIAdd) {

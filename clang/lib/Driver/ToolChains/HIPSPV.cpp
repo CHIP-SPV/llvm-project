@@ -109,7 +109,9 @@ void HIPSPV::Linker::constructLinkAndEmitSpirvCommand(
     ClangArgs.push_back("-mllvm");
     ClangArgs.push_back("-spirv-ext=+SPV_INTEL_function_pointers"
                         ",+SPV_INTEL_subgroups"
-                        ",+SPV_EXT_relaxed_printf_string_address_space");
+                        ",+SPV_EXT_relaxed_printf_string_address_space"
+                        ",+SPV_KHR_bit_instructions"
+                        ",+SPV_EXT_shader_atomic_float_add");
 
     ClangArgs.push_back(TempFile);
     ClangArgs.push_back("-o");

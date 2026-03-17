@@ -55,7 +55,7 @@
 
 // WRAPPER: clang{{.*}}" --no-default-config -o {{[^ ]*.img}}
 // WRAPPER-SAME: --target=spirv64-unknown-chipstar
-// WRAPPER-SAME: -mllvm -spirv-ext=+SPV_INTEL_function_pointers,+SPV_INTEL_subgroups
+// WRAPPER-SAME: -mllvm -spirv-ext=+SPV_INTEL_function_pointers,+SPV_INTEL_subgroups,+SPV_EXT_relaxed_printf_string_address_space,+SPV_KHR_bit_instructions,+SPV_EXT_shader_atomic_float_add
 // WRAPPER-SAME: -x ir
 
 // Linker wrapper with -no-use-spirv-backend uses llvm-spirv translator.
@@ -85,7 +85,7 @@
 // Default chipStar: in-tree SPIR-V backend (native).
 //      CHIPSTAR: {{".*clang.*"}} "--no-default-config" "-c"
 // CHIPSTAR-SAME: "--target=spirv64-unknown-chipstar"
-// CHIPSTAR-SAME: "-mllvm" "-spirv-ext=+SPV_INTEL_function_pointers,+SPV_INTEL_subgroups,+SPV_EXT_relaxed_printf_string_address_space"
+// CHIPSTAR-SAME: "-mllvm" "-spirv-ext=+SPV_INTEL_function_pointers,+SPV_INTEL_subgroups,+SPV_EXT_relaxed_printf_string_address_space,+SPV_KHR_bit_instructions,+SPV_EXT_shader_atomic_float_add"
 // CHIPSTAR-SAME: [[LOWER_BC]] "-o" "[[SPIRV_OUT:.*img]]"
 
 // chipStar with -no-use-spirv-backend: llvm-spirv translator path.
@@ -120,7 +120,7 @@
 // Subarch chipStar also defaults to native backend.
 //      CHIPSTAR-SUBARCH: {{".*clang.*"}} "--no-default-config" "-c"
 // CHIPSTAR-SUBARCH-SAME: "--target=spirv64v1.3-unknown-chipstar"
-// CHIPSTAR-SUBARCH-SAME: "-mllvm" "-spirv-ext=+SPV_INTEL_function_pointers,+SPV_INTEL_subgroups,+SPV_EXT_relaxed_printf_string_address_space"
+// CHIPSTAR-SUBARCH-SAME: "-mllvm" "-spirv-ext=+SPV_INTEL_function_pointers,+SPV_INTEL_subgroups,+SPV_EXT_relaxed_printf_string_address_space,+SPV_KHR_bit_instructions,+SPV_EXT_shader_atomic_float_add"
 // CHIPSTAR-SUBARCH-SAME: [[LOWER_BC]] "-o" "[[SPIRV_OUT:.*img]]"
 
 //-----------------------------------------------------------------------------
